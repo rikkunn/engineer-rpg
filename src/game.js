@@ -1,10 +1,13 @@
 import { HEROES, SKILLS, MIGRATIONS, activeMembers, levelUp, heroAtLevel, validAction, copy, initialState, rest, objective, createBattle, resolveTurn, flee, parseSave } from './engine.js';
 import { MAPS, entities, pathTo } from './world.js';
-import { EVENTS } from './campaign.js';
+import { EVENTS, REVISITS } from './campaign.js';
 import { drawWorld, drawTitle, mapPoint } from './art.js';
 import { setMusic } from './audio.js';
 import { drawMonster } from './monsters.js';
 import { INVESTIGATIONS } from './investigations.js';
+import { dialoguePages, drawPortrait } from './dialogue.js';
+import { CHAPTER_ONE } from './chapter-one.js';
+import { nextGuidance } from './guidance.js';
 
 const app = document.querySelector('#app'), modal = document.querySelector('#modal');
 const KEY = 'engineer-rpg-v1';
@@ -24,8 +27,8 @@ function save(slot = 'auto') { try { localStorage.setItem(`${KEY}-${slot}`, JSON
 function available(slot) { try { return !!localStorage.getItem(`${KEY}-${slot}`); } catch { return false; } }
 function load(slot) { try { const raw = localStorage.getItem(`${KEY}-${slot}`); if (!raw) throw new Error('保存データがありません。'); const next = parseSave(raw); if (MAPS[next.map].grid[next.y][next.x] !== '.') throw new Error('保存位置が不正です。'); state = next; movementToken++; moving=false; battle=null; dialogue=null; screen='world'; modal.close(); render(); if(state.flags.finished)showCredits();else notice('冒険を再開しました。'); } catch (e) { notice(e.message || '読み込めませんでした。'); } }
 function note(text) { if (!state.notes.includes(text)) state.notes.push(text); }
-function talk(speaker, lines, after) { dialogue = { speaker, lines, index: 0, after }; render(); }
-function nextDialogue() { if (!dialogue) return; state.history.push(`${dialogue.speaker}：${dialogue.lines[dialogue.index]}`); state.history = state.history.slice(-120); dialogue.index++; if (dialogue.index >= dialogue.lines.length) { const fn=dialogue.after; dialogue=null; fn?.(); save(); } render(); }
+function talk(speaker, lines, after) { dialogue = { speaker, lines:dialoguePages(speaker,lines), index:0, after }; render(); }
+function nextDialogue() { if (!dialogue) return; state.history.push(`${dialogue.lines[dialogue.index].speaker||'情景'}：${dialogue.lines[dialogue.index].text}`); state.history = state.history.slice(-120); dialogue.index++; if (dialogue.index >= dialogue.lines.length) { const fn=dialogue.after; dialogue=null; fn?.(); save(); } render(); }
 
 function optionsFor(i) { return Object.entries(SKILLS).filter(([key,s]) => (s.owner===undefined || s.owner===i) && (!s.requiredFlag||state.flags[s.requiredFlag]) && (key!=='seal'||battle.id==='boss') && (!key.startsWith('evidence_')||battle.id==='knights') && (!MIGRATIONS.includes(key)||battle.id==='legacy'&&MIGRATIONS[battle.phase]===key)); }
 function forecast() {
@@ -50,25 +53,25 @@ function interact(id){
   if(interactCampaign(id))return;
   switch(id){
     case 'shop':
-      if(state.flags.boss&&!state.flags.complete){talk('道具屋 → 村長',['注文が一回ずつ届く！ ありがとう。これで薬草の山に埋もれずに済む。','村長「見事じゃ。この仕組みは、王国の全店舗で使っておる」','ユウ「ちなみに、何店舗ですか？」','村長「128店舗じゃ。今回と同じ修正でよいから、簡単じゃろう？」','対象店舗：1 → 128。あなたは、見積もりを持ち帰ることにした。'],()=>{state.flags.complete=true;note('第一章完了。二重送信を解消。残り127店舗は別途お見積もり。');showEnding();});}
+      if(state.flags.boss&&!state.flags.complete){talk('道具屋',CHAPTER_ONE.report,()=>{state.flags.complete=true;note('第一章完了。二重送信を解消。残り127店舗は別途お見積もり。');showEnding();});}
       else if(state.flags.complete)talk('道具屋',['今日はもう休んでいってくれ。追加の依頼は明日の営業時間に頼むよ。']);
       else if(state.flags.quest)talk('道具屋',['店員にも話を聞いてくれ。村長なら、古い仕組みを知っているかもしれない。','地下へ行く前に宿で休んでいきな。宿代はこの案件の経費にしておいた。']);
-      else talk('道具屋',['薬草を十個注文したら、二十個届いたんだ。私は一回しか頼んでいない。','営業からは「簡単な修正」と聞いている。原因？ それを調べてもらいたくてね。','ユウ「現場の操作から確認します。今回から参加のリナ、後輩のテオ、古参のガン。四人で行こう」','テオ「注文が二倍。売上も二倍……？」 リナ「その要件、誰も頼んでないよ」 ガン「全員で聞いて、直して、確かめよう」','薬草6個を持ってきた。HPが減ったら「再テスト」。担当以外でも助け合える。村の宿では無料で全回復できる。'],()=>{state.flags.quest=true;note('依頼：薬草の注文が二重に届く。店員の操作と村長の運用を調べる。');});
+      else talk('道具屋',CHAPTER_ONE.shop,()=>{state.flags.quest=true;note('依頼：薬草の注文が二重に届く。店員の操作と村長の運用を調べる。');});
       break;
     case 'clerk': if(!state.flags.quest){talk('店員',['店主がお困りです。まずは道具屋に話を聞いてください。']);break;}
-      talk('店員',['注文ボタンを押しても何も出なくて。不安なので、もう一回押しました。','テオ「操作は二回、注文は一回のつもり。なるほど」','ガン「連打を止めるだけでは、通信の再送は防げないな」'],()=>{state.flags.clerk=true;note('店員の証言：反応がなくボタンを二度押した。再送時も同じ注文として扱う必要がある。');});break;
+      talk('店員',CHAPTER_ONE.clerk,()=>{state.flags.clerk=true;note('店員の証言：反応がなくボタンを二度押した。再送時も同じ注文として扱う必要がある。');});break;
     case 'mayor': if(!state.flags.clerk){talk('村長',['何が起きたか、まずは店員から聞いてきておくれ。推測で仕様を増やすのは危険じゃ。']);break;}
-      talk('村長',['夜中に古い注文を送り直す仕組みもあるぞ。地下の遺跡で、今も動いておる。','ユウ「初耳ですが」 村長「聞かれなかったからのう」','前任の賢者は「処理済みの刻印で、同じ注文を弾く」と言っておった。最深部にあるはずじゃ。','地下の端末には運用記録がある。議事録も残っていれば持っていくとよい。'],()=>{state.flags.mayor=true;note('村長の証言：夜間バッチが古い注文を再送。最深部の刻印で二重処理を防ぐ。');});break;
-    case 'inn':rest(state);save();talk('宿屋',['一晩、ゆっくりお休みください。宿代は経費です。','社用水晶が光った。ガン「定期通知だ。対応は明日でいい」','全員のHP・MPが回復した。休んでも締切は進まない。']);break;
+      talk('村長',CHAPTER_ONE.mayor,()=>{state.flags.mayor=true;note('村長の証言：夜間バッチが古い注文を再送。最深部の刻印で二重処理を防ぐ。');});break;
+    case 'inn':rest(state);save();talk('宿屋',CHAPTER_ONE.inn);break;
     case 'sign':talk('村の案内板',['上：地下遺跡。左：道具屋と宿屋。右：店員と村長。','町の標語「小さな修正、大きな影響」','人物をタップすると近くまで移動して話します。下の目的地ボタンからも操作できます。']);break;
     case 'ruins':if(!state.flags.mayor){talk('ユウ',['現場の話を揃えてから地下へ行こう。道具屋、店員、村長の順に確認だ。']);break;}changeMap('ruins',4,5);break;
     case 'village':changeMap('village',4,2);break;
     case 'core':changeMap('core',4,6);break;
     case 'ruinsBack':changeMap('ruins',4,2);break;
-    case 'terminal':talk('運用端末',['WARNING: ログ出力は負荷対策のため無効化されています。','ガン「調査のためのログを出すための作業、か。『監視強化』は誰でも使える。今回は俺が先に入れる」','ユウ「その後に『ログを見ろ』。原因が分かれば攻撃の威力が上がる」','ガンはユウより速い。同じターンに監視とログを選んでも順番通りに使える。'],()=>{state.flags.terminal=true;note('攻略：ガンの監視強化 → ユウのログを見ろ。原因特定後は攻撃が1.5倍。');});break;
+    case 'terminal':talk('',CHAPTER_ONE.terminal,()=>{state.flags.terminal=true;note('攻略：ガンの監視強化 → ユウのログを見ろ。原因特定後は攻撃が1.5倍。');});break;
     case 'minutes':talk('承認済み議事録',state.flags.minutes?['議事録はすでに手帳に保管した。証拠は何枚あってもよい。']:['「同じ注文は一回だけ処理すること。全関係者了承済み」','ユウは「議事録の盾」を使えるようになった！','3ターン以内の「そんな話は聞いていない」を一度防ぐ。ボスの予告に合わせて使おう。'],()=>{state.flags.minutes=true;note('議事録：二重処理は禁止。議事録の盾でボスの合意巻き戻しを一度無効化できる。');});break;
     case 'seal':talk('古い宝箱',state.flags.seal?['処理済みの刻印は持っている。押印回数に制限はない。']:['「処理済みの刻印」を手に入れた！','テオ「同じ注文番号に二度、処理をしない。これで再送されても大丈夫」','双頭蛇との戦闘で、誰か一人の行動を「処理済みの刻印」にしよう。復活を止められる。','古い回復装置も動いた。全員のHP・MPが回復した。'],()=>{if(!state.flags.seal)rest(state);state.flags.seal=true;note('刻印を入手。戦闘コマンドで使うと双頭蛇の復活が止まる。消費しない。');});break;
-    case 'archive':talk('前任者の記録',['「再送そのものは悪ではない。届かなかった注文を助けるための仕組みだ」','「同じ依頼かどうかを確認せず、二度実行することが問題なのだ」','リナ「全部消せばよい、というわけではないのね」','ガン「こいつも、誰かを助けようとして動いていたんだな」'],()=>{state.flags.archive=true;note('前任者の記録：再送を全廃せず、同じ注文を重複処理しない仕組みを入れる。');});break;
+    case 'archive':talk('',CHAPTER_ONE.archive,()=>{state.flags.archive=true;note('前任者の記録：再送を全廃せず、同じ注文を重複処理しない仕組みを入れる。');});break;
     case 'boss':if(!state.flags.seal){talk('テオ',['二つの首が互いを復活させている。先に宝箱の「処理済みの刻印」を探そう。']);break;}talk('二重送信の双頭蛇',['「受付完了……受付完了……」 同じ注文が繰り返されている。','ユウ「止めよう。今度こそ、一回だけ届くように」'],()=>startBattle('boss'));break;
     default:if(['slime1','slime2','ghost'].includes(id))startBattle(id);
   }
@@ -83,16 +86,16 @@ function finishBattle(){
   battle=null;beforeBattle=null;
   if(id==='boss'){
     state.flags.boss=true;levelUp(state);note('双頭蛇を攻略。二重送信を停止した。道具屋への報告が残っている。');save();
-    talk('ユウ',['二重送信は止まった。二重チェックの会議は残った。','緊張がほどけた。全員のHP・MPが回復した！','リナ「終わった！」 テオ「報告までが仕事です」','村へ戻って、道具屋に伝えよう。'],()=>changeMap('village',4,2));
+    talk('',CHAPTER_ONE.victory,()=>changeMap('village',4,2));
   }else if(id==='knights'){
-    state.flags.knights=true;levelUp(state);save();event('border_resolved',()=>changeMap('gate',4,2));
+    state.flags.knights=true;levelUp(state);save();event('boundary_minutes',()=>event('border_resolved',()=>changeMap('gate',4,2)));
   }else if(id==='legacy'){
     state.flags.finished=true;rest(state);save();event('legacy_handoff',()=>{const count=['auto_test','restore_test','handover'].filter(k=>state.flags[k]).length;event(count===3?'epilogue_best':count?'epilogue_good':'epilogue_hero',showCredits);});
   }else{save();render();notice('障害を解消。敵は復活しません。');}
 }
 function showEnding(){talk('次の冒険へ',['第一章「ボタンは二度押された」 完了。','国境の橋でも、申請が届かなくなっているらしい。村の右下の道から向かおう。','サラという営業が待っている。「今回は契約書も持っていく」とのことだ。']);}
 function showCredits(){const count=['auto_test','restore_test','handover'].filter(k=>state.flags[k]).length;openModal(count===3?'定時退社':count?'無事納品':'伝説の担当者',`<div class="credits"><div class="eyebrow">THE END</div><h3>その件、持ち帰ります。</h3><p>SEたちの異世界RPG</p><p style="margin:22px 0">調べた出来事 ${state.notes.length}件<br>解消した障害 ${state.defeated.length}件<br>運用の準備 ${count} / 3</p><p>今日の仕事には、終わりがあった。</p><p class="muted">閉じた後も、手帳から切替前の世界へ戻れます。任意依頼を整えて別の結末へ挑めます。</p><button data-act="postgame" style="margin-top:20px">切替前の世界へ</button></div>`);}
-function event(id,after){const data=EVENTS[id];talk(data.speaker,data.lines,()=>{state.flags[data.flag]=true;note(`${data.speaker}：${data.lines.at(-1)}`);after?.();});}
+function event(id,after){const data=EVENTS[id],lines=state.flags[data.flag]&&REVISITS[id]?REVISITS[id]:data.lines;talk(data.speaker,lines,()=>{state.flags[data.flag]=true;note(`${(typeof data.lines.at(-1)==="object"?data.lines.at(-1).speaker||"記録":data.speaker)}：${data.lines.at(-1).text??data.lines.at(-1)}`);after?.();});}
 function startInvestigation(id,after){
   if(state.flags[`${id}_complete`]){after?.();return;}
   const data=INVESTIGATIONS[id];let step=0;while(state.flags[`${id}_step_${step}`]&&step<data.steps.length)step++;
@@ -101,7 +104,7 @@ function startInvestigation(id,after){
 }
 function drawInvestigation(feedback=null,correct=false){
   const {id,step}=investigation,data=INVESTIGATIONS[id],part=data.steps[step];
-  openModal(data.title,`<div class="investigation-progress" aria-label="手順${step+1}/${data.steps.length}">${data.steps.map((_,i)=>`<span class="${i<=step?'lit':''}">${i<step?'◆':'◇'}</span>`).join('<i>─</i>')}</div><div class="investigation-speaker">${part.speaker}</div><p class="investigation-text">${part.text}</p>${feedback?`<div class="investigation-feedback"><p>${escape(feedback)}</p><button data-investigation-next="${correct?'advance':'retry'}">${correct?'次の記録へ ▸':'もう一度考える ↶'}</button></div>`:`<div class="investigation-choices">${part.choices.map((c,i)=>`<button data-investigation-choice="${i}"><span>▸</span>${c.label}</button>`).join('')}</div>`}<p class="investigation-footnote">模擬環境 / 閉じても確認済みの手順は残ります</p>`);
+  openModal(data.title,`<div class="investigation-progress" aria-label="手順${step+1}/${data.steps.length}">${data.steps.map((_,i)=>`<span class="${i<=step?'lit':''}">${i<step?'◆':'◇'}</span>`).join('<i>─</i>')}</div><div class="investigation-speaker">${part.speaker}</div><p class="investigation-text">${part.text}</p>${feedback?`<div class="investigation-feedback"><div class="feedback-beats">${dialoguePages("",[feedback]).map(line=>`<section><b>${escape(line.speaker||"情景")}</b><p>${escape(line.text)}</p></section>`).join("")}</div><button data-investigation-next="${correct?'advance':'retry'}">${correct?'次の記録へ ▸':'もう一度考える ↶'}</button></div>`:`<div class="investigation-choices">${part.choices.map((c,i)=>`<button data-investigation-choice="${i}"><span>▸</span>${c.label}</button>`).join('')}</div>`}<p class="investigation-footnote">模擬環境 / 閉じても確認済みの手順は残ります</p>`);
 }
 function battleName(){return battle.id==='boss'?'二重送信の双頭蛇':battle.id==='knights'?'責任分界の三騎士':battle.id==='legacy'?'古代機 レガシア':'不具合との遭遇';}
 function equipment(){openModal('旅の装備屋',`<p class="gold">所持金 ${state.gold} G</p><p>必要な装備は、気合いより経費。</p><div class="stack">${state.party.map((h,i)=>`<h3>${h.name} · Lv.${state.level||1}</h3>${[['weapon','承認印の武器','攻撃+4'],['armor','耐火の外套','防御+3'],['charm','休憩の護符','最大MP+6']].map(([key,name,effect])=>`<button data-buy="${i},${key}" ${state.gear?.[i]?.[key]||state.gold<45?'disabled':''}>${state.gear?.[i]?.[key]?'装備済み':name+' / 45 G'} <small>${effect}</small></button>`).join('')}`).join('')}<button data-act="buy-potion" ${state.gold<10?'disabled':''}>薬草 / 10 G（所持 ${state.potions}個）</button></div>`);}
@@ -121,7 +124,7 @@ function interactCampaign(id){
   if(id==='knights'){
     if(!['evidence_a','evidence_b','evidence_c'].every(k=>state.flags[k]))return blocked('ユウ','受付台帳、中継碑、変更台帳。三つの記録が揃えば、同じ出来事を追いかけられる。');
     if(!state.flags.trace_complete){startInvestigation('trace',()=>interactCampaign('knights'));return true;}
-    event('boundary_minutes',()=>event('knights_warning',()=>startBattle('knights')));return true;
+    event('knights_warning',()=>startBattle('knights'));return true;
   }
   if(id==='legacy'){
     if(!state.flags.release_scope||!state.flags.legacy_voice)return blocked('ユウ','サラと古代の声を確認して、今回の切替範囲を確定しよう。');
@@ -159,10 +162,11 @@ function openModal(title,body){modal.innerHTML=`<button class="close quiet" data
 function journal(){openModal('冒険の手帳',`<p class="gold">${objective(state)}</p>${state.flags.finished?'<button data-act="postgame">切替前の世界へ戻る</button>':''}<h3>パーティー Lv.${state.level||1}</h3><p>${state.party.map(h=>`${h.name}（${h.job}）　攻撃${h.attack} / 防御${h.defense}`).join('<br>')}</p><h3>調査メモ</h3>${state.notes.length?`<ul>${state.notes.map(n=>`<li>${escape(n)}</li>`).join('')}</ul>`:'<p>道具屋で依頼を受けると、調査メモが増えます。</p>'}<h3>最近の会話</h3>${state.history.slice(-12).map(t=>`<p>${escape(t)}</p>`).join('')}`);}
 function settings(){openModal('設定と冒険の記録',`<label class="setting"><input type="checkbox" data-pref="large" ${prefs.large?'checked':''}>会話の文字を大きくする</label><label class="setting"><input type="checkbox" data-pref="dpad" ${prefs.dpad?'checked':''}>方向ボタンを表示する</label><label class="setting"><input type="checkbox" data-pref="reduced" ${prefs.reduced?'checked':''}>移動・戦闘の演出を省略する</label><label class="setting"><input type="checkbox" data-pref="sound" ${prefs.sound?'checked':''}>効果音</label><label class="setting"><input type="checkbox" data-pref="music" ${prefs.music?'checked':''}>BGM（控えめな音量）</label><h3>冒険の記録</h3><p>この端末・ブラウザに保存します。戦闘中に閉じた場合は戦闘直前から再開します。</p><div class="stack"><button data-act="manual-save" ${screen==='title'||battle||dialogue||moving?'disabled':''}>冒険を記録する</button><button data-act="manual-load" ${!available('manual')||!!battle||moving?'disabled':''}>記録から再開する</button><button data-act="export" ${screen==='title'||dialogue||moving?'disabled':''}>記録を書き出す</button><label>記録を読み込む<input type="file" id="import" accept="application/json,.json" ${battle||moving?'disabled':''}></label><button data-act="title" ${battle||dialogue||moving?'disabled':''}>タイトルへ戻る</button></div>`);}
 function skills(){openModal('特技の説明',Object.entries(SKILLS).filter(([k])=>k!=='seal'||state.flags.seal).map(([k,v])=>`<h3>${v.label}${v.cost?` · MP${v.cost}`:''}</h3><p>${v.help}</p>`).join(''));}
-function newGame(){state=initialState();screen='world';battle=null;dialogue=null;movementToken++;moving=false;save();talk('案件ギルドの紹介状',['ここはハジマリ村。あなたたちは、小さな不具合を直しにやってきた。','依頼書には「薬草の注文がおかしい。簡単な修正のはず」とだけ書かれている。','まずは村の左上にいる道具屋へ。マップの人物、または下の目的地ボタンをタップしよう。']);}
+function newGame(){state=initialState();screen='world';battle=null;dialogue=null;movementToken++;moving=false;save();talk('',CHAPTER_ONE.intro);}
 document.addEventListener('click',e=>{
   const btn=e.target.closest('button');if(!btn||btn.disabled)return;
   tone('select');
+  if(btn.dataset.guide){const e=entities(state).find(e=>e.id===btn.dataset.guide);if(e)travel(e.x,e.y);return;}
   if(btn.dataset.revise!==undefined){commander=Number(btn.dataset.revise);editingPlan=true;commandMode='root';render();return;}
   if(btn.dataset.command){chooseCommand(btn.dataset.command);return;}
   if(btn.dataset.skill){selectedSkill=btn.dataset.skill;const type=SKILLS[selectedSkill].target;if(type==='enemy'||type==='ally'){commandMode='target';render();}else commitChoice(selectedSkill,0);return;}
@@ -220,7 +224,7 @@ document.addEventListener('keydown',e=>{if(modal.open||e.target.matches('select,
 function rect(ctx,color,x,y,w,h){ctx.fillStyle=color;ctx.fillRect(x,y,w,h);}
 function person(ctx,x,y,color,player=false){rect(ctx,'#0b191b66',x+7,y+25,19,5);rect(ctx,'#302b29',x+11,y+3,11,5);rect(ctx,'#e6bf8e',x+12,y+8,9,7);rect(ctx,color,x+9,y+15,15,10);rect(ctx,'#22343b',x+10,y+25,5,5);rect(ctx,'#22343b',x+18,y+25,5,5);rect(ctx,'#edcea4',x+6,y+16,3,8);rect(ctx,'#edcea4',x+24,y+16,3,8);rect(ctx,'#263c39',x+18,y+10,2,2);if(player){rect(ctx,'#e8d998',x+9,y+3,15,3);rect(ctx,'#e8d998',x+14,y-3,5,3);}}
 function tree(ctx,x,y){rect(ctx,'#71553b',x+14,y+16,5,16);rect(ctx,'#163f30',x+2,y+4,29,20);rect(ctx,'#2e6845',x+7,y,19,25);rect(ctx,'#407b50',x+10,y+2,10,13);rect(ctx,'#548857',x+8,y+8,4,5);}
-function drawMap(canvas,s,titleArt=false){if(!canvas)return;if(titleArt)drawTitle(canvas);else drawWorld(canvas,s,MAPS[s.map],entities(s));}
+function drawMap(canvas,s,titleArt=false){if(!canvas)return;if(titleArt)drawTitle(canvas);else drawWorld(canvas,s,MAPS[s.map],entities(s),nextGuidance(s)?.targetId);}
 function tone(kind){
   if(!prefs.sound)return;
   try{soundContext ||= new(window.AudioContext||window.webkitAudioContext)();if(soundContext.state==='suspended')soundContext.resume();const start=soundContext.currentTime;const notes=kind==='win'?[392,523,659,784]:kind==='battle'?[196,233,294]:kind==='hit'?[110,65]:kind==='heal'?[523,659]:[660];notes.forEach((f,i)=>{const osc=soundContext.createOscillator(),gain=soundContext.createGain();osc.type=kind==='hit'?'sawtooth':'triangle';osc.frequency.value=f;gain.gain.setValueAtTime(.035,start+i*.08);gain.gain.exponentialRampToValueAtTime(.001,start+i*.08+.12);osc.connect(gain).connect(soundContext.destination);osc.start(start+i*.08);osc.stop(start+i*.08+.13);});}catch{}
@@ -230,14 +234,14 @@ function title(){
   drawMap($('#title-map'),initialState(),true);
 }
 function hud(){return `<header class="game-hud"><div class="location"><small>${battle?'⚔ BATTLE':state.map==='village'?'◆ SAFE AREA':'◆ DUNGEON'}</small><strong>${battle?battleName():MAPS[state.map].name}</strong></div><div class="hud-actions"><button data-act="journal" aria-label="冒険の手帳">手帳</button><button data-act="settings" aria-label="設定とセーブ">☰</button></div></header>`;}
-function dialogueHTML(){return `<section class="message-window"><div class="message-name">${escape(dialogue.speaker)}</div><div class="message-body" aria-live="polite">${escape(dialogue.lines[dialogue.index])}</div><button data-act="next" class="next-message">${dialogue.index===dialogue.lines.length-1?'閉じる':'つづける'} <span>▼</span></button><small class="page-count">${dialogue.index+1} / ${dialogue.lines.length}</small></section>`;}
+function dialogueHTML(){const line=dialogue.lines[dialogue.index],last=dialogue.index===dialogue.lines.length-1;return `<section class="message-window ${line.speaker?'spoken':'narration'}" aria-label="${escape(line.speaker||'情景・案内')}">${line.speaker?'<canvas id="speaker-portrait" width="40" height="48" aria-hidden="true"></canvas>':''}<div class="message-content"><div class="message-name">${escape(line.speaker||'情景・案内')}</div><div class="message-body" aria-live="polite">${escape(line.text)}</div></div><div class="message-footer"><small class="page-count">${dialogue.index+1} / ${dialogue.lines.length}</small><button data-act="next" class="next-message">${last?'話を終える':'つづける'} <span>▼</span></button></div></section>`;}
 function partyDock(){
   const shown=playback?.current?.party||state.party;
   return `<div class="party-dock">${shown.map((h,i)=>{const delta=playback?.previous?.party[i]?playback.previous.party[i].hp-h.hp:0;return `<div class="party-unit ${battle&&!playback&&commander===i?'active':''} ${h.hp<=0?'fallen':''} ${(playback?.current?.absences||battle?.absences)?.[i]?'away':''} ${delta>0?'hit-unit':delta<0?'healed-unit':''}" style="--hero:${h.color}">
   <canvas class="hero-sprite" id="hero-${i}" width="32" height="34" aria-hidden="true"></canvas>${delta?`<span class="unit-delta ${delta<0?'healing':''}">${delta>0?'-'+delta:'+'+-delta}</span>`:''}
   <div class="unit-info"><b>${h.name}<span class="${h.burn?'burning':''}">${h.hp<=0?'不能':(playback?.current?.absences||battle?.absences)?.[i]?'休み':h.burn?'炎上':h.job}</span></b><div class="hp-readout">HP <strong>${h.hp}</strong><small>/${h.maxHp}</small></div><div class="life-track"><i style="width:${h.hp/h.maxHp*100}%"></i></div><div class="mp-readout">MP ${h.mp}<small>/${h.maxMp}</small></div></div></div>`;}).join('')}</div>`;
 }
-function worldHTML(){return `<div class="quest-ribbon">◇ ${objective(state)}</div><div class="world-stage"><div class="map-wrap"><canvas id="map" width="288" height="288" tabindex="0" role="img" aria-label="${MAPS[state.map].name}。タップで移動。目的地ボタンからも移動できます。"></canvas></div><span class="area-caption">${MAPS[state.map].subtitle}</span></div>${state.flags.quest?partyDock():''}<div class="world-bottom">${dialogue?dialogueHTML():`<div class="explore-dock"><div class="travel-hint"><span>${moving?'移動中…':'行きたい場所をタップ'}</span><small>${state.gold} G　薬草 ${state.potions}</small></div><div class="explore-commands"><button data-act="destinations" ${moving?'disabled':''}>↗ 目的地</button><button data-act="inspect" ${moving?'disabled':''}>◇ しらべる</button><button data-act="help">？ 操作</button></div>${prefs.dpad?'<div class="dpad"><button data-dir="0,-1" aria-label="上へ">↑</button><button data-dir="-1,0" aria-label="左へ">←</button><button data-dir="0,1" aria-label="下へ">↓</button><button data-dir="1,0" aria-label="右へ">→</button></div>':''}</div>`}</div>`;}
+function worldHTML(){const guide=nextGuidance(state),guideEntity=entities(state).find(e=>e.id===guide?.targetId),guideAction=guideEntity?.type==="enemy"||guideEntity?.type==="boss"?"タップで移動・戦闘":guideEntity?.type==="exit"?"タップで次の場所へ移動":"タップで移動・会話／調査";return `<div class="quest-ribbon">◇ ${objective(state)}</div><div class="world-stage"><div class="map-wrap"><canvas id="map" width="288" height="288" tabindex="0" role="img" aria-label="${MAPS[state.map].name}。タップで移動。目的地ボタンからも移動できます。"></canvas></div><span class="area-caption">${MAPS[state.map].subtitle}</span></div>${state.flags.quest&&!dialogue?partyDock():''}<div class="world-bottom">${dialogue?dialogueHTML():`<div class="explore-dock">${guide?`<button class="next-objective" data-guide="${guide.targetId}" ${moving?"disabled":""}><span>◆ 次の一歩</span><b>${escape(guide.label)}　›</b><small>${moving?"移動中…":guideAction}</small></button>`:""}<div class="travel-hint"><span>${moving?'移動中…':'自由に歩くなら、地面をタップ'}</span><small>${state.gold} G　薬草 ${state.potions}</small></div><div class="explore-commands"><button data-act="destinations" ${moving?'disabled':''}>↗ 目的地</button><button data-act="inspect" ${moving?'disabled':''}>◇ しらべる</button><button data-act="help">？ 操作</button></div>${prefs.dpad?'<div class="dpad"><button data-dir="0,-1" aria-label="上へ">↑</button><button data-dir="-1,0" aria-label="左へ">←</button><button data-dir="0,1" aria-label="下へ">↓</button><button data-dir="1,0" aria-label="右へ">→</button></div>':''}</div>`}</div>`;}
 function commandPanel(){
   if(playback){const lines=playback.current?.lines||['戦闘開始！'];return `<div class="command-window playback"><div class="command-name">${playback.position+1} / ${playback.frames.length}　戦闘中</div><div class="playback-lines" aria-live="polite">${lines.map(l=>`<p>${escape(l)}</p>`).join('')}</div><div class="playback-actions"><button data-act="battle-next">次へ ▸</button><button data-act="battle-skip">結果まで進む »</button></div></div>`;}
   if(battle.result)return `<div class="command-window battle-result"><span class="result-star">${battle.result==='win'?'✦':'◇'}</span><h2>${battle.result==='win'?'障害を解消した！':'全員が倒れてしまった…'}</h2><p>${battle.result==='win'?`${rewardGold()} G（基本${battle.boss?120:25}＋残業代${battle.overtimePay||0}）と 薬草${battle.boss?3:1}個を獲得。`:'再試行で消耗品も元通り。監視と回復を忘れずに。'}</p><div class="result-actions"><button data-act="${battle.result==='win'?'victory':'retry'}">${battle.result==='win'?'探索に戻る':'もう一度挑む'}</button>${battle.result==='lose'?'<button data-act="retreat">村へ戻る</button>':''}</div></div>`;
@@ -274,6 +278,7 @@ function render(){
   if(screen==='title'){title();return;}
   app.innerHTML=`<div class="game-root ${battle?'battle-mode':'world-mode'}">${hud()}${battle?battleHTML():worldHTML()}</div>`;
   if(battle)(playback?.current?.enemies||battle.enemies).forEach((e,i)=>drawMonster($(`#enemy-${i}`),e.type,i));else drawMap($('#map'),state);
+  if(dialogue){const line=dialogue.lines[dialogue.index];drawPortrait($('#speaker-portrait'),line.speaker,line.emotion);}
   state.party.forEach((h,i)=>{const c=$(`#hero-${i}`);if(c)person(c.getContext('2d'),0,2,h.color);});
 }
 function chooseCommand(mode){if(playback||battle?.result)return;commandMode=mode;render();}

@@ -28,3 +28,5 @@
 ローカルの組み込みBrowserはruntime起動エラーがあったため、独立したheadless Edge/Playwrightで検証した。PLAYWRIGHT_PATHで既存ランタイムを指定する。
 
 Sites v1公開済み：https://engineer-rpg.lungtheater.chatgpt.site （ゲームソースc99bf82）。Windows公開時はPATHの先頭にGit/binを置き、TAR_OPTIONS=--force-local、archivePathはC:/形式でbundled workflowを実行する。標準bashはWSLのためWindowsパスで失敗する。
+
+2026-10-04: ユーザー試遊で会話表示/台詞の人間味/次操作不明を重大問題として指摘。dialogue.js/chapter-one.jsで一人一発言と顔/地の文分離、campaign40イベント改稿＋REVISITS20、guidance.jsで次行動CTAと地図目標を統合。モバイル導入75ページPASS、単体46件。三騎士の合意は戦後へ移動。初見プレイ時間/実機/AAA認定は未検証のまま。会話バトルと新状態はまだprototypes/未実装。
