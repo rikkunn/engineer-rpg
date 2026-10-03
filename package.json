@@ -5,8 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "node scripts/serve.mjs",
+    "build": "node scripts/build.mjs",
     "test": "node --test",
-    "check": "node --check src/game.js && node --check src/engine.js && node --check src/world.js"
+    "check": "node --check src/game.js && node --check src/engine.js && node --check src/world.js && node --check src/campaign.js && node --check src/art.js && node --check src/monsters.js && node --check src/audio.js && node --check src/investigations.js"
   },
   "engines": { "node": ">=22" }
 }

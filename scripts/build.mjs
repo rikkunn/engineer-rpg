@@ -1,0 +1,10 @@
+import { mkdir, copyFile, readdir, readFile } from 'node:fs/promises';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
+await mkdir(resolve(root,'dist/src'),{recursive:true});
+for(const file of ['index.html','style.css'])await copyFile(resolve(root,file),resolve(root,'dist',file));
+for(const file of await readdir(resolve(root,'src')))if(file.endsWith('.js'))await copyFile(resolve(root,'src',file),resolve(root,'dist/src',file));
+const html=await readFile(resolve(root,'dist/index.html'),'utf8');
+if(!html.includes('src/game.js')||!html.includes('style.css'))throw new Error('Entry references missing');
+console.log('Built static game in dist/. Only game runtime files are included.');
