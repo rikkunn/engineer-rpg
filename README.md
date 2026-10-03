@@ -4,7 +4,7 @@ SEあるあるを、探索・証拠集め・ターン制バトルにしたスマ
 
 ## 現在の公開対象（2026-10-03）
 
-[ゲームを遊ぶ](https://engineer-rpg.lungtheater.chatgpt.site) — Sites v3、ゲームソース `00bbd61`。公開成功を確認済み。
+[ゲームを遊ぶ](https://engineer-rpg.lungtheater.chatgpt.site) — Sites v4、ゲームソース `dbbdea8`。公開成功を確認済み。
 
 ユーザーの指示により、ここまでの動作確認済み版をSitesへ公開しました。製品完成・AAA品質の認定ではありません。GitHubはPrivateを維持し、ゲームはURLを知っている人が遊べる公開範囲です。
 
