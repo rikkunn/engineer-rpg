@@ -1,0 +1,12 @@
+{
+  "name": "engineer-rpg",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/serve.mjs",
+    "test": "node --test",
+    "check": "node --check src/game.js && node --check src/engine.js && node --check src/world.js"
+  },
+  "engines": { "node": ">=22" }
+}
