@@ -37,7 +37,7 @@ try {
   await tap('[data-act=battle-skip]');assert.match(await page.locator('.battle-status').innerText(),/TURN 2/);assert.match(await page.locator('.battle-status').innerText(),/原因特定/);
   await tap('[data-act=settings]');await page.locator('[data-pref=reduced]').check();await tap('[data-act=close]');
   for(let i=0;i<4;i++)await tap('[data-skill=guard]');await tap('[data-act=turn]');
-  assert.equal(await page.locator('.playback').count(),0);assert.match(await page.locator('.battle-status').innerText(),/TURN 3/);
+  assert.equal(await page.locator('.playback').count(),1);await tap('[data-act=battle-skip]');assert.match(await page.locator('.battle-status').innerText(),/TURN 3/);
   await page.reload();await tap('[data-act=continue]');assert.equal(await page.locator('.world-mode').count(),1);assert.match(await page.locator('.location strong').innerText(),/夜間バッチ/);
   await context.close();
  }

@@ -46,7 +46,7 @@ async function fight(id){
    if(id==='legacy'&&i===0&&enemy[0].hp<=enemy[0].max*.4){await tap('[data-command=items]');const enabled=page.locator('[data-skill^="migrate_"]:not(:disabled)');assert.ok(await enabled.count(),'migration not exposed');await enabled.first().tap();continue;}
    await select(type,to);
   }
-  await tap('[data-act=turn]');
+  await tap('[data-act=turn]');await tap('[data-act=battle-skip]');
  }
  assert.equal(await page.locator('[data-act=victory]').count(),1,`${id}: party defeated`);
  battles.push({id,turns:loops});console.log('won',id,loops);
