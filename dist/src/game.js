@@ -18,6 +18,7 @@ let investigation = null;
 let editingPlan = false;
 const canCommand = i => !!state.party[i] && state.party[i].hp > 0 && !battle?.absences?.[i];
 const firstCommander = () => activeMembers(state,battle)[0] ?? 4;
+const musicMode = () => battle?'battle':screen==='title'||MAPS[state.map].theme==='village'?'field':'dungeon';
 const rewardGold = () => (battle.boss?120:25)+(battle.overtimePay||0);
 const absenceSummary = () => Object.entries(battle?.absences||{}).map(([i,reason])=>`${state.party[i].name}：${reason}（1ターン休み）`).join(' / ');
 const escape = text => String(text).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -25,7 +26,7 @@ const $ = selector => document.querySelector(selector);
 function notice(text, persistent = false) { const el = $('#notice'); el.textContent = text; el.classList.add('show'); if(modal.open){let status=modal.querySelector('[role=status]');if(!status){status=document.createElement('p');status.setAttribute('role','status');status.className='gold';modal.prepend(status);}status.textContent=text;}clearTimeout(noticeTimer); if (!persistent) noticeTimer = setTimeout(() => el.classList.remove('show'), 4500); }
 function save(slot = 'auto') { try { localStorage.setItem(`${KEY}-${slot}`, JSON.stringify(state)); return true; } catch { notice('保存できません。設定からデータを書き出してください。', true); return false; } }
 function available(slot) { try { return !!localStorage.getItem(`${KEY}-${slot}`); } catch { return false; } }
-function load(slot) { try { const raw = localStorage.getItem(`${KEY}-${slot}`); if (!raw) throw new Error('保存データがありません。'); const next = parseSave(raw); if (MAPS[next.map].grid[next.y][next.x] !== '.') throw new Error('保存位置が不正です。'); state = next; movementToken++; moving=false; battle=null; dialogue=null; screen='world'; modal.close(); render(); if(state.flags.finished)showCredits();else notice('冒険を再開しました。'); } catch (e) { notice(e.message || '読み込めませんでした。'); } }
+function load(slot) { try { const raw = localStorage.getItem(`${KEY}-${slot}`); if (!raw) throw new Error('保存データがありません。'); const next = parseSave(raw); if (MAPS[next.map].grid[next.y][next.x] !== '.') throw new Error('保存位置が不正です。'); state = next; movementToken++; moving=false; battle=null; dialogue=null; screen='world'; modal.close(); render();setMusic(prefs.music,musicMode()); if(state.flags.finished)showCredits();else notice('冒険を再開しました。'); } catch (e) { notice(e.message || '読み込めませんでした。'); } }
 function note(text) { if (!state.notes.includes(text)) state.notes.push(text); }
 function talk(speaker, lines, after) { dialogue = { speaker, lines:dialoguePages(speaker,lines), index:0, after }; render(); }
 function nextDialogue() { if (!dialogue) return; state.history.push(`${dialogue.lines[dialogue.index].speaker||'情景'}：${dialogue.lines[dialogue.index].text}`); state.history = state.history.slice(-120); dialogue.index++; if (dialogue.index >= dialogue.lines.length) { const fn=dialogue.after; dialogue=null; fn?.(); save(); } render(); }
@@ -78,12 +79,12 @@ function interact(id){
 }
 function startBattle(id){editingPlan=false;save();beforeBattle=copy(state);battle=createBattle(id,state);choices=state.party.map(()=> 'attack');targets=[0,0,0,0];commander=firstCommander();commandMode='root';playback=null;render();setMusic(prefs.music,'battle');tone('battle');}
 function finishBattle(){
-  setMusic(prefs.music,state.map==='village'?'field':'dungeon');
   const id=battle.id,boss=battle.boss;
   if(!state.defeated.includes(id))state.defeated.push(id);
   state.gold+=rewardGold();state.potions+=boss?3:1;
   if(battle.scanned)note(`${battle.enemies[0].name}をログで調査済み。原因が分かれば対策できる。`);
   battle=null;beforeBattle=null;
+  setMusic(prefs.music,musicMode());
   if(id==='boss'){
     state.flags.boss=true;levelUp(state);note('双頭蛇を攻略。二重送信を停止した。道具屋への報告が残っている。');save();
     talk('',CHAPTER_ONE.victory,()=>changeMap('village',4,2));
@@ -160,9 +161,9 @@ function interactCampaign(id){
 }
 function openModal(title,body){modal.innerHTML=`<button class="close quiet" data-act="close" aria-label="閉じる">×</button><h2 id="modal-title">${title}</h2>${body}`;if(!modal.open)modal.showModal();}
 function journal(){openModal('冒険の手帳',`<p class="gold">${objective(state)}</p>${state.flags.finished?'<button data-act="postgame">切替前の世界へ戻る</button>':''}<h3>パーティー Lv.${state.level||1}</h3><p>${state.party.map(h=>`${h.name}（${h.job}）　攻撃${h.attack} / 防御${h.defense}`).join('<br>')}</p><h3>調査メモ</h3>${state.notes.length?`<ul>${state.notes.map(n=>`<li>${escape(n)}</li>`).join('')}</ul>`:'<p>道具屋で依頼を受けると、調査メモが増えます。</p>'}<h3>最近の会話</h3>${state.history.slice(-12).map(t=>`<p>${escape(t)}</p>`).join('')}`);}
-function settings(){openModal('設定と冒険の記録',`<label class="setting"><input type="checkbox" data-pref="large" ${prefs.large?'checked':''}>会話の文字を大きくする</label><label class="setting"><input type="checkbox" data-pref="dpad" ${prefs.dpad?'checked':''}>方向ボタンを表示する</label><label class="setting"><input type="checkbox" data-pref="reduced" ${prefs.reduced?'checked':''}>移動・戦闘の動きを抑える（文章はタップ送り）</label><label class="setting"><input type="checkbox" data-pref="sound" ${prefs.sound?'checked':''}>効果音</label><label class="setting"><input type="checkbox" data-pref="music" ${prefs.music?'checked':''}>BGM（控えめな音量）</label><h3>冒険の記録</h3><p>この端末・ブラウザに保存します。戦闘中に閉じた場合は戦闘直前から再開します。</p><div class="stack"><button data-act="manual-save" ${screen==='title'||battle||dialogue||moving?'disabled':''}>冒険を記録する</button><button data-act="manual-load" ${!available('manual')||!!battle||moving?'disabled':''}>記録から再開する</button><button data-act="export" ${screen==='title'||dialogue||moving?'disabled':''}>記録を書き出す</button><label>記録を読み込む<input type="file" id="import" accept="application/json,.json" ${battle||moving?'disabled':''}></label><button data-act="title" ${battle||dialogue||moving?'disabled':''}>タイトルへ戻る</button></div>`);}
+function settings(){openModal('設定と冒険の記録',`<label class="setting"><input type="checkbox" data-pref="large" ${prefs.large?'checked':''}>会話の文字を大きくする</label><label class="setting"><input type="checkbox" data-pref="dpad" ${prefs.dpad?'checked':''}>方向ボタンを表示する</label><label class="setting"><input type="checkbox" data-pref="reduced" ${prefs.reduced?'checked':''}>移動・戦闘の動きを抑える（文章はタップ送り）</label><label class="setting"><input type="checkbox" data-pref="sound" ${prefs.sound?'checked':''}>効果音</label><label class="setting"><input type="checkbox" data-pref="music" ${prefs.music?'checked':''}>BGM（クラシック編曲）</label><p>探索：歓喜の歌 ／ ダンジョン：月光 ／ 戦闘：運命</p><h3>冒険の記録</h3><p>この端末・ブラウザに保存します。戦闘中に閉じた場合は戦闘直前から再開します。</p><div class="stack"><button data-act="manual-save" ${screen==='title'||battle||dialogue||moving?'disabled':''}>冒険を記録する</button><button data-act="manual-load" ${!available('manual')||!!battle||moving?'disabled':''}>記録から再開する</button><button data-act="export" ${screen==='title'||dialogue||moving?'disabled':''}>記録を書き出す</button><label>記録を読み込む<input type="file" id="import" accept="application/json,.json" ${battle||moving?'disabled':''}></label><button data-act="title" ${battle||dialogue||moving?'disabled':''}>タイトルへ戻る</button></div>`);}
 function skills(){openModal('特技の説明',Object.entries(SKILLS).filter(([k])=>k!=='seal'||state.flags.seal).map(([k,v])=>`<h3>${v.label}${v.cost?` · MP${v.cost}`:''}</h3><p>${v.help}</p>`).join(''));}
-function newGame(){state=initialState();screen='world';battle=null;dialogue=null;movementToken++;moving=false;save();talk('',CHAPTER_ONE.intro);}
+function newGame(){state=initialState();screen='world';battle=null;dialogue=null;movementToken++;moving=false;save();talk('',CHAPTER_ONE.intro);setMusic(prefs.music,musicMode());}
 document.addEventListener('click',e=>{
   const btn=e.target.closest('button');if(!btn||btn.disabled)return;
   tone('select');
@@ -192,14 +193,14 @@ document.addEventListener('click',e=>{
     case 'victory':finishBattle();break;
     case 'retry':{const id=battle.id;state=copy(beforeBattle);startBattle(id);break;}
     case 'retreat':state=copy(beforeBattle);battle=null;beforeBattle=null;changeMap('village',4,7);break;
-    case 'flee':if(!flee(state,battle)){notice('切替中は帰還できません。復旧か移行を進めよう。');break;}battle=null;beforeBattle=null;save();render();notice('持ち帰りました。宿で回復して再挑戦できます。');break;
+    case 'flee':if(!flee(state,battle)){notice('切替中は帰還できません。復旧か移行を進めよう。');break;}battle=null;beforeBattle=null;save();render();setMusic(prefs.music,musicMode());notice('持ち帰りました。宿で回復して再挑戦できます。');break;
     case 'start-final':modal.close();startBattle('legacy');break;
     case 'postgame':modal.close();state.flags.finished=false;state.defeated=state.defeated.filter(id=>id!=='legacy');rest(state);changeMap('release',4,2);break;
     case 'buy-potion':if(state.gold>=10){state.gold-=10;state.potions++;save();equipment();}break;
     case 'manual-save':if(save('manual'))notice('手動セーブしました。');break;
     case 'manual-load':load('manual');break;
     case 'export':{const data=battle?beforeBattle:state;const url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='engineer-rpg-save.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);break;}
-    case 'title':modal.close();if(screen!=='title')save();screen='title';render();break;
+    case 'title':modal.close();if(screen!=='title')save();screen='title';render();setMusic(prefs.music,musicMode());break;
   }
 });
 document.addEventListener('click',e=>{const b=e.target.closest('[data-destination]');if(!b)return;const entity=entities(state).find(x=>x.id===b.dataset.destination);modal.close();if(entity)travel(entity.x,entity.y);});
@@ -214,8 +215,8 @@ document.addEventListener('click',e=>{
 document.addEventListener('change',async e=>{
   if(e.target.dataset.actionIndex!==undefined){const i=Number(e.target.dataset.actionIndex);choices[i]=e.target.value;const list=SKILLS[choices[i]].target==='ally'?state.party:battle.enemies;targets[i]=Math.max(0,list.findIndex(h=>h.hp>0));render();}
   if(e.target.dataset.targetIndex!==undefined)targets[Number(e.target.dataset.targetIndex)]=Number(e.target.value);
-  if(e.target.dataset.pref){prefs[e.target.dataset.pref]=e.target.checked;setMusic(prefs.music,battle?'battle':state.map==='village'?'field':'dungeon');try{localStorage.setItem(`${KEY}-prefs`,JSON.stringify(prefs));}catch{}render();}
-  if(e.target.id==='import'&&e.target.files[0]){try{const file=e.target.files[0];if(file.size>250000)throw new Error('データが大きすぎます。');const next=parseSave(await file.text());if(MAPS[next.map].grid[next.y][next.x]!=='.')throw new Error('保存位置が不正です。');state=next;battle=null;dialogue=null;screen='world';modal.close();save();render();notice('セーブデータを読み込みました。');}catch(err){notice(err.message);}}
+  if(e.target.dataset.pref){prefs[e.target.dataset.pref]=e.target.checked;setMusic(prefs.music,musicMode());try{localStorage.setItem(`${KEY}-prefs`,JSON.stringify(prefs));}catch{}render();}
+  if(e.target.id==='import'&&e.target.files[0]){try{const file=e.target.files[0];if(file.size>250000)throw new Error('データが大きすぎます。');const next=parseSave(await file.text());if(MAPS[next.map].grid[next.y][next.x]!=='.')throw new Error('保存位置が不正です。');state=next;battle=null;dialogue=null;screen='world';modal.close();save();render();setMusic(prefs.music,musicMode());notice('セーブデータを読み込みました。');}catch(err){notice(err.message);}}
 });
 app.addEventListener('click',e=>{if(e.target.id!=='map')return;const point=mapPoint(e.target,e.clientX,e.clientY);if(point)travel(point.x,point.y);});
 document.addEventListener('keydown',e=>{if(modal.open||e.target.matches('select,input,button')||screen!=='world'||battle||dialogue)return;const d={ArrowUp:[0,-1],ArrowDown:[0,1],ArrowLeft:[-1,0],ArrowRight:[1,0]}[e.key];if(d){e.preventDefault();travel(state.x+d[0],state.y+d[1]);}});
