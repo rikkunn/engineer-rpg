@@ -26,3 +26,5 @@
 このタスクはまだローカル。Sites公開はPCを切っても遊べる配信だが、ローカル開発タスクをクラウド移行するものではない。Codex Cloudの環境設定と新タスクが別途必要。公式参照：https://learn.chatgpt.com/docs/environments/cloud-environments
 
 ローカルの組み込みBrowserはruntime起動エラーがあったため、独立したheadless Edge/Playwrightで検証した。PLAYWRIGHT_PATHで既存ランタイムを指定する。
+
+Sites v1公開済み：https://engineer-rpg.lungtheater.chatgpt.site （ゲームソースc99bf82）。Windows公開時はPATHの先頭にGit/binを置き、TAR_OPTIONS=--force-local、archivePathはC:/形式でbundled workflowを実行する。標準bashはWSLのためWindowsパスで失敗する。
